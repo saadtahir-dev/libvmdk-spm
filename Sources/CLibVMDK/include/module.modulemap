@@ -1,0 +1,4 @@
+module CLibVMDK {
+    header "vmdk_shim.h"
+    export *
+}

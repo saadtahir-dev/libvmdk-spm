@@ -1,0 +1,4 @@
+module CLibVMDKFuse {
+    header "vmdk_fuse_shim.h"
+    export *
+}
