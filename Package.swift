@@ -66,7 +66,8 @@ let package = Package(
             dependencies: ["CLibVMDK"],
             path: "Sources/CLibVMDKResources",
             resources: [
-                .copy("bin")
+                .copy("bin"),
+                .copy("lib")
             ]
         ),
         .target(
