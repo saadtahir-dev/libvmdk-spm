@@ -234,11 +234,11 @@ Prebuilt command-line tools ship in `Sources/CLibVMDKResources/bin/` and are res
 
 ## macFUSE Compatibility
 
-`vmdkmount` requires macFUSE to be installed and loaded. The bundled binary links against macFUSE’s `libfuse3.4.dylib`.
+`vmdkmount` requires macFUSE to be installed and loaded on the target machine. The bundled binary links against macFUSE's `libfuse3.4.dylib` via a relative load path (`@loader_path/../lib/libfuse3.4.dylib`), resolved against a copy of `libfuse3.4.dylib` vendored in `CLibVMDKResources/lib` and re-signed under this package's own signing identity — this avoids hardened-runtime library-validation failures when the user's installed macFUSE is signed under a different Team ID.
 
-libvmdk’s FUSE mount code was patched for macFUSE 5.x: a `fuse_darwin_attr` boundary layer in `vmdktools/mount_fuse.c` maps between libfuse’s `struct fuse_stat` and macFUSE’s `struct fuse_attr` at the callback boundary. On macFUSE 5.x the Darwin attribute fields use `size`, `mode`, and `nlink` (not the older `fa_size`, `fa_mode` names).
+This libvmdk release already ships a correct `fuse_darwin_attr` boundary layer in `vmdktools/mount_fuse.c` for macFUSE 5.x (Darwin attribute fields use `size`, `mode`, `nlink`, not the older `fa_size`/`fa_mode` names) — **no source patch is applied by this package.**
 
-For build steps, patch details, and troubleshooting, see the [swift-forensic-playbook](https://github.com/saadtahir-dev/swift-forensic-playbook).
+For build steps and troubleshooting, see the [swift-forensic-playbook](https://github.com/saadtahir-dev/swift-forensic-playbook). Note the playbook's `fuse_darwin_attr` patch script targets an older libvmdk release; check upstream `vmdktools/mount_fuse.h` before applying it on a fresh clone — it may already be a no-op.
 
 ---
 
@@ -246,8 +246,9 @@ For build steps, patch details, and troubleshooting, see the [swift-forensic-pla
 
 See the [swift-forensic-playbook](https://github.com/saadtahir-dev/swift-forensic-playbook) for the complete step-by-step guide covering:
 
-- Building libvmdk and all libyal dependencies as universal static libraries
-- Applying the macFUSE 5.x `fuse_darwin_attr` patch to `vmdktools/mount_fuse.c`
+- Building libvmdk and all libyal dependencies as **static-only** universal archives (`--enable-static --disable-shared`), arm64 + x86_64, `lipo`'d together
+- Checking whether the target libvmdk release needs the macFUSE 5.x `fuse_darwin_attr` boundary-layer patch to `vmdktools/mount_fuse.c` (not needed as of the version currently vendored here — verify against upstream before assuming otherwise)
+- Vendoring `libfuse3.4.dylib` into `CLibVMDKResources/lib`, re-signed under your own Developer ID, with `vmdkmount`'s load path repointed to `@loader_path/../lib/libfuse3.4.dylib`
 - Bundling `vmdkmount` and `vmdkinfo`
 - Creating the SPM package structure with `CLibVMDK`, `CLibVMDKFuse`, and `LibVMDK` targets
 
