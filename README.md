@@ -227,14 +227,18 @@ Prebuilt command-line tools ship in `Sources/CLibVMDKResources/bin/` and are res
 | Property | Value |
 |---|---|
 | Architectures | Universal (arm64 + x86_64) |
-| FUSE linkage | `libfuse3.4.dylib` (macFUSE) |
+| FUSE linkage | System `/usr/local/lib/libfuse3.4.dylib` (macFUSE), absolute path |
 | Resolution | `CLibVMDKResources` SPM resource bundle |
 
 ---
 
 ## macFUSE Compatibility
 
-`vmdkmount` requires macFUSE to be installed and loaded on the target machine. The bundled binary links against macFUSE's `libfuse3.4.dylib` via a relative load path (`@loader_path/../lib/libfuse3.4.dylib`), resolved against a copy of `libfuse3.4.dylib` vendored in `CLibVMDKResources/lib` and re-signed under this package's own signing identity — this avoids hardened-runtime library-validation failures when the user's installed macFUSE is signed under a different Team ID.
+`vmdkmount` requires macFUSE to be installed and loaded on the target machine, and links against the **system-installed** `/usr/local/lib/libfuse3.4.dylib` by absolute path — it does not bundle its own copy.
+
+An earlier build of this package tried vendoring a private copy of `libfuse3.4.dylib` into the resource bundle and re-signing it under this package's own Developer ID, to work around hardened-runtime library-validation rejecting macFUSE's Team ID. That approach doesn't work: `libfuse3.4.dylib` isn't standalone — it's one piece of a multi-component macFUSE installation, and it itself loads `MFMount.framework` (`/Library/Filesystems/macfuse.fs/Contents/Frameworks/MFMount.framework/...`), a separate component signed under macFUSE's own Team ID and tied to the user's installed macFUSE version and kernel/system extension. Resigning our copy of `libfuse3.4.dylib` didn't change that inner dependency's signature — so the same Team ID mismatch just reappeared one level deeper in the load chain.
+
+**The actual fix**: `vmdkmount` links the system `libfuse3.4.dylib` directly (matching whatever macFUSE version the user has installed, avoiding any version skew), and the **consuming app must sign `vmdkmount` with the `com.apple.security.cs.disable-library-validation` entitlement**. This package does not sign its own binaries with this entitlement — bundling an SPM resource doesn't preserve a signature or entitlements through Xcode's normal build/archive process, so the entitlement has to be applied by whichever app embeds and (re-)signs `vmdkmount` as part of its own build (see ReconLab's `Sign Imaging Binaries` build phase for a reference implementation). Scope the entitlement to `vmdkmount` specifically, not the whole app — `vmdkinfo` doesn't touch macFUSE and doesn't need it.
 
 This libvmdk release already ships a correct `fuse_darwin_attr` boundary layer in `vmdktools/mount_fuse.c` for macFUSE 5.x (Darwin attribute fields use `size`, `mode`, `nlink`, not the older `fa_size`/`fa_mode` names) — **no source patch is applied by this package.**
 
@@ -248,9 +252,10 @@ See the [swift-forensic-playbook](https://github.com/saadtahir-dev/swift-forensi
 
 - Building libvmdk and all libyal dependencies as **static-only** universal archives (`--enable-static --disable-shared`), arm64 + x86_64, `lipo`'d together
 - Checking whether the target libvmdk release needs the macFUSE 5.x `fuse_darwin_attr` boundary-layer patch to `vmdktools/mount_fuse.c` (not needed as of the version currently vendored here — verify against upstream before assuming otherwise)
-- Vendoring `libfuse3.4.dylib` into `CLibVMDKResources/lib`, re-signed under your own Developer ID, with `vmdkmount`'s load path repointed to `@loader_path/../lib/libfuse3.4.dylib`
+- Linking `vmdkmount` against the system `/usr/local/lib/libfuse3.4.dylib` (absolute path — do **not** vendor and re-sign a private copy; see macFUSE Compatibility above for why)
 - Bundling `vmdkmount` and `vmdkinfo`
 - Creating the SPM package structure with `CLibVMDK`, `CLibVMDKFuse`, and `LibVMDK` targets
+- A note for consuming apps: sign `vmdkmount` with `com.apple.security.cs.disable-library-validation` at archive/export time, scoped to that binary only
 
 ---
 
